@@ -4,11 +4,13 @@
   "folders": [  
     {
       "name": "Documentos",
-      "source": "C:\\Users\\SSanchez\\Documents"
+      "source": "C:\\Users\\SSanchez\\Documents",
+      "compress": false
     },
     {
       "name": "Desarrollo GITHUB",
-      "source": "C:\\GITHUB"
+      "source": "C:\\GITHUB",
+      "compress": true
     }
   ],
   "logPath": "C:\\BackupLab\\logs"

@@ -306,28 +306,33 @@ Example:
 
 ```json
 {
-  "pcName": "CENTRAL01",
-  "pcsToCopy": ["PC471", "PC312"],
+  "pcName": "pc7222",
+  "networkBackupPath": "\\\\fitxers3\\fitxers\\__Caracteritzacio Electrica_ICTS\\_BACKUPS",
+  "localMirrorPath": "F:\\BACKUPS\\_BACKUPS",
+  "logPath": "C:\\BackupCentral\\logs",
+  "pcsToCopy": ["pc471", "pc684", "pc6132"],
   "deleteAfterCopy": false,
-  "networkSource": "\\\\FITXERS3\\fitxers\\Backups",
   "folders": [
-    {"name": "Documents", "source": "C:\\Users\\Central\\Documents"},
-    {"name": "Projects", "source": "D:\\CentralProjects"}
-  ],
-  "localDestination": "E:\\CentralBackups",
-  "logPath": "C:\\BackupCentral\\logs"
+    {
+      "name": "Medidas",
+      "source": "D:\\Documentos\\MESURES"
+    }
+  ]
 }
 ```
+
+networkBackupPath → Network folder where lab PC backups are located
+localMirrorPath → Local path for the central backup mirror
 
 Important fields:
 
 * `pcName` → Name of central PC (for log files)
-* `pcsToCopy` → List of lab PCs to copy from network
-* `deleteAfterCopy` → Delete source backup after copy
-* `folders` → Local folders to backup from central PC
-* `networkSource` → Network path with lab backups
-* `localDestination` → Local mirror path (external disk)
+* `networkBackupPath` → Network folder where lab PC backups are located
+* `localMirrorPath` → Local path for the central backup mirror (external disk)
 * `logPath` → Local folder for logs
+* `pcsToCopy` → List of lab PCs to copy from network; if empty, skip network copy
+* `deleteAfterCopy` → Delete source backup after copy (true/false)
+* `folders` → Local folders to backup from central PC
 
 ---
 
@@ -366,4 +371,15 @@ The system is prepared to support:
 * Hybrid backup (Network + Cloud + External Disk)
 
 Cloud configuration will be added later in the central PC script without modifying lab PCs.
+
+---
+
+# Final Notes
+
+* Do not modify the script unless necessary
+* Always test with manual backup first
+* Ensure network path permissions are correct
+* Keep at least one external backup copy (recommended)
+
+
 

@@ -60,28 +60,74 @@ function Run-Backup {
 
     foreach ($folder in $folders) {
         $source = $folder.source
-        $dest = Join-Path $pcBackupPath $folder.name
+        $name = $folder.name
+        $compress = $false
+
+        # If compress field exists in JSON
+        if ($folder.PSObject.Properties.Name -contains "compress") {
+            $compress = [bool]$folder.compress
+        }
 
         if (!(Test-Path $source)) {
             Write-Host "Source not found: $source" -ForegroundColor Yellow
             continue
         }
 
-        if (!(Test-Path $dest)) {
-            New-Item -ItemType Directory -Path $dest -Force | Out-Null
-        }
+        # -------------------------------------------------
+        # MODE 1: NORMAL MIRROR (NO COMPRESSION)
+        # -------------------------------------------------
+        if (-not $compress) {
+            $dest = Join-Path $pcBackupPath $name
 
-        Write-Host "Sync (mirror): $source -> $dest"
-        
-        robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
+            if (!(Test-Path $dest)) {
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            }
+
+            Write-Host "Sync (mirror): $source -> $dest"
+            robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
+        }
+        # -------------------------------------------------
+        # MODE 2: COMPRESSED BACKUP (ZIP)
+        # -------------------------------------------------
+        else {
+            Write-Host "Compressed backup enabled for: $name" -ForegroundColor Cyan
+
+            # Temp local folder for safe compression
+            $tempFolder = Join-Path $env:TEMP ("backup_" + $pcName + "_" + $name)
+
+            if (Test-Path $tempFolder) {
+                Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
+            }
+
+            New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
+
+            Write-Host "Copying to temp folder: $tempFolder"
+            robocopy $source $tempFolder /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /LOG:$logFile /NFL /NDL /NP
+
+            # Zip destination (on network)
+            $zipFileName = "${name}.zip"
+            $zipDest = Join-Path $pcBackupPath $zipFileName
+            $localZip = Join-Path $env:TEMP ("${pcName}_${name}.zip")
+
+            if (Test-Path $localZip) {
+                Remove-Item $localZip -Force
+            }
+
+            Write-Host "Creating ZIP: $localZip"
+            Compress-Archive -Path "$tempFolder\*" -DestinationPath $localZip -Force
+
+            Write-Host "Copying ZIP to network: $zipDest"
+            Copy-Item -Path $localZip -Destination $zipDest -Force
+
+            # Cleanup temp
+            Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $localZip -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Write-Host "===== BACKUP FINISHED ====="
 
-    # -------------------------------------------------
-    # COPY FINAL LOG TO NETWORK (FLAG OF SUCCESS)
-    # -------------------------------------------------
-    # Copy log to network (FITXERS3)
+    # Copy final log to network (flag of success)
     try {
        $networkLog = Join-Path $pcBackupPath (Split-Path $logFile -Leaf)
        Copy-Item -Path $logFile -Destination $networkLog -Force

@@ -1,0 +1,15 @@
+{
+  "pcName": "pc471",
+  "networkBackupPath": "\\\\fitxers3\\fitxers\\__Caracteritzacio Electrica_ICTS\\_BACKUPS",
+  "folders": [  
+    {
+      "name": "Documentos",
+      "source": "C:\\Users\\SSanchez\\Documents"
+    },
+    {
+      "name": "Desarrollo GITHUB",
+      "source": "C:\\GITHUB"
+    }
+  ],
+  "logPath": "C:\\BackupLab\\logs"
+}

@@ -102,14 +102,17 @@ Example configuration:
   "pcName": "PC471",
   "networkBackupPath": "\\\\FITXERS3\\fitxers\\Backups",
   "logPath": "C:\\BackupLab\\logs",
+  "sevenZipPath": "C:\\Program Files\\7-Zip\\7z.exe",
   "folders": [
     {
       "name": "Documents",
-      "source": "C:\\Users\\Lab\\Documents"
+      "source": "C:\\Users\\Lab\\Documents",
+      "compress": false
     },
     {
       "name": "Projects",
-      "source": "D:\\Projects"
+      "source": "D:\\Projects",
+      "compress": true
     }
   ]
 }
@@ -120,7 +123,11 @@ Important fields:
 * `pcName` → Unique name of the PC
 * `networkBackupPath` → Shared backup folder
 * `logPath` → Local folder for logs
+* `sevenZipPath` → Full path to 7-Zip executable (required for compression)
 * `folders` → List of folders to backup
+* `compress` (optional) →
+    * `true`  = ZIP compression using 7-Zip
+    * `false` = Fast mirror backup (robocopy)
 
 ---
 
@@ -197,6 +204,32 @@ You will see a menu:
 
 ---
 
+## Compressed Backup Mode (ZIP per Folder)
+
+The system supports per-folder compression using 7-Zip.
+
+If `"compress": true` is enabled in a folder configuration, the script will:
+
+1. Create a temporary mirror copy in `%TEMP%`
+2. Compress the folder using 7-Zip
+3. Copy the ZIP file to the network backup folder
+4. Delete temporary files automatically
+
+Example:
+```json
+{
+  "name": "Desarrollo GITHUB",
+  "source": "D:\\GitHub",
+  "compress": true
+}
+```
+This mode is ideal for:
+* Large folders with many small files
+* Historical or rarely accessed data
+* Repositories and archives
+
+---
+
 # PART 3 - Log System
 
 The script automatically generates log files with:
@@ -231,7 +264,50 @@ This allows the central computer to:
 
 ---
 
-# PART 4 - Scheduling Automatic Backups (Recommended)
+# PART 4 - Requirements (Important)
+
+## Disk Space Safety for Compression
+
+When compression mode is enabled, the script uses the local TEMP directory
+(usually located in the C: drive) to:
+
+- Create a temporary copy of the folder
+- Generate the ZIP file locally before sending it to the network
+
+Because of this, the system requires approximately:
+
+> 2× the folder size in free disk space on the TEMP drive
+
+Example:
+- Folder size: 500 MB
+- Required free space: ~1 GB on C: drive
+
+If there is NOT enough free space:
+- The script will automatically log a warning
+- Compression will be skipped
+- A normal mirror backup (robocopy) will be performed instead
+- The backup will NOT fail
+  
+---
+## System Requirements
+
+Laboratory PCs:
+- Windows 10/11
+- PowerShell 5.1 or higher
+- Network access to backup storage
+- 7-Zip installed (required if compression is used)
+
+Central PC:
+- Windows 10/11
+- External backup disk (recommended)
+- Access to network backup path
+
+Note:
+If compression is disabled (`compress: false`), 7-Zip is not required.
+
+---
+
+# PART 5 - Scheduling Automatic Backups (Recommended)
 
 ## Create a Scheduled Task (Windows Task Scheduler)
 
@@ -268,7 +344,7 @@ Now the backup will run automatically without user interaction.
 
 ---
 
-# PART 5 - Installation on Central Computer (pc_central)
+# PART 6 - Installation on Central Computer (pc_central)
 
 The central PC is responsible for:
 
@@ -336,7 +412,7 @@ Important fields:
 
 ---
 
-# PART 6 - Safety Features Included
+# PART 7 - Safety Features Included
 
 The system includes multiple protections:
 
@@ -350,7 +426,7 @@ The system includes multiple protections:
 
 ---
 
-# PART 7 - Best Practices for Laboratory Deployment
+# PART 8 - Best Practices for Laboratory Deployment
 
 Recommended setup:
 
@@ -358,11 +434,14 @@ Recommended setup:
 * One central backup (weekly to external disk)
 * Periodic check of log files in network folder
 * Use unique PC names in each config file
+* Use compression only for large or archival folders
+* Avoid compression for active measurement data (faster with mirror mode)
+* Ensure enough free space in C: drive if compression is enabled
 * Test backup manually before automation
 
 ---
 
-# PART 8 - Future Cloud Integration (Optional)
+# PART 9 - Future Cloud Integration (Optional)
 
 The system is prepared to support:
 

@@ -16,6 +16,7 @@ $TestMode = $true  # si es $true → no cierra ventana al acabar
 $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
 $pcName = $config.pcName
 $networkBase = $config.networkBackupPath
+$sevenZipPath = $config.sevenZipPath
 $folders = $config.folders
 
 # Backup path for this PC
@@ -53,7 +54,7 @@ function Run-Backup {
     Write-Host "===== BACKUP STARTED ($pcName) ====="
     Test-Network
 
-    # Create PC folder if not exists
+    # Crear carpeta del PC si no existe
     if (!(Test-Path $pcBackupPath)) {
         New-Item -ItemType Directory -Path $pcBackupPath -Force | Out-Null
     }
@@ -63,7 +64,7 @@ function Run-Backup {
         $name = $folder.name
         $compress = $false
 
-        # If compress field exists in JSON
+        # Comprobar si existe el campo compress en JSON
         if ($folder.PSObject.Properties.Name -contains "compress") {
             $compress = [bool]$folder.compress
         }
@@ -74,60 +75,81 @@ function Run-Backup {
         }
 
         # -------------------------------------------------
-        # MODE 1: NORMAL MIRROR (NO COMPRESSION)
+        # MODO 1: NORMAL MIRROR (NO COMPRESSION)
         # -------------------------------------------------
         if (-not $compress) {
             $dest = Join-Path $pcBackupPath $name
-
-            if (!(Test-Path $dest)) {
-                New-Item -ItemType Directory -Path $dest -Force | Out-Null
-            }
+            if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
 
             Write-Host "Sync (mirror): $source -> $dest"
             robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
         }
         # -------------------------------------------------
-        # MODE 2: COMPRESSED BACKUP (ZIP)
+        # MODO 2: COMPRESSED BACKUP (ZIP)
         # -------------------------------------------------
         else {
             Write-Host "Compressed backup enabled for: $name" -ForegroundColor Cyan
 
-            # Temp local folder for safe compression
+            # Carpeta temporal para copiar los archivos antes de zip
             $tempFolder = Join-Path $env:TEMP ("backup_" + $pcName + "_" + $name)
+            if (Test-Path $tempFolder) { Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
+            Write-Host "Copying to temp folder: $tempFolder"
 
-            if (Test-Path $tempFolder) {
-                Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
+            # Calcular tamaño de la carpeta de origen
+            $folderSize = (Get-ChildItem -Path $source -Recurse | Measure-Object -Property Length -Sum).Sum
+            if (-not $folderSize) { $folderSize = 0 }
+
+            # Comprobar espacio libre en unidad temporal
+            $psDrive = (Get-Item $tempFolder).PSDrive
+            $freeSpace = $psDrive.Free
+
+            if ($freeSpace -lt 2 * $folderSize) {
+                Write-Host "WARNING: Not enough free space on $($psDrive.Name): to compress folder '$name'." -ForegroundColor Yellow
+                Write-Host "Fallback to normal mirror copy."
+
+                $dest = Join-Path $pcBackupPath $name
+                if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+                robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
+                continue
             }
 
-            New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
-
-            Write-Host "Copying to temp folder: $tempFolder"
+            # Copiar contenido a carpeta temporal
             robocopy $source $tempFolder /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /LOG:$logFile /NFL /NDL /NP
 
-            # Zip destination (on network)
+            # Crear ZIP con 7-Zip
             $zipFileName = "${name}.zip"
             $zipDest = Join-Path $pcBackupPath $zipFileName
             $localZip = Join-Path $env:TEMP ("${pcName}_${name}.zip")
-
-            if (Test-Path $localZip) {
-                Remove-Item $localZip -Force
-            }
+            if (Test-Path $localZip) { Remove-Item $localZip -Force }
 
             Write-Host "Creating ZIP: $localZip"
-            Compress-Archive -Path "$tempFolder\*" -DestinationPath $localZip -Force
+            $sevenZipExe = $sevenZipPath
+            $sevenZipArgs = "a -tzip `"$localZip`" `"$tempFolder\*`" -mx=9"
 
-            Write-Host "Copying ZIP to network: $zipDest"
-            Copy-Item -Path $localZip -Destination $zipDest -Force
+            try {
+                $proc = Start-Process -FilePath $sevenZipExe -ArgumentList $sevenZipArgs -Wait -NoNewWindow -PassThru
+                if ($proc.ExitCode -ne 0) { throw "7-Zip failed with exit code $($proc.ExitCode)" }
 
-            # Cleanup temp
-            Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
-            Remove-Item $localZip -Force -ErrorAction SilentlyContinue
+                Write-Host "Copying ZIP to network: $zipDest"
+                Copy-Item -Path $localZip -Destination $zipDest -Force
+            } catch {
+                Write-Host "ERROR: Could not create ZIP for '$name'. Falling back to normal mirror." -ForegroundColor Red
+                Write-Host $_
+                $dest = Join-Path $pcBackupPath $name
+                if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+                robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
+            } finally {
+                # Cleanup temporal
+                Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $localZip -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
     Write-Host "===== BACKUP FINISHED ====="
 
-    # Copy final log to network (flag of success)
+    # Copiar log final a la red
     try {
        $networkLog = Join-Path $pcBackupPath (Split-Path $logFile -Leaf)
        Copy-Item -Path $logFile -Destination $networkLog -Force

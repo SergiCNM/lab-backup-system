@@ -1,5 +1,7 @@
 {
   "networkBackupPath": "\\\\fitxers3\\fitxers\\__Caracteritzacio Electrica_ICTS\\_BACKUPS",
   "localMirrorPath": "F:\\BACKUPS\\_BACKUPS",
-  "logPath": "C:\\BackupCentral\\logs"
+  "logPath": "C:\\BackupCentral\\logs",
+  "pcsToCopy": ["pc471", "pc684", "pc6132"],
+  "deleteAfterCopy": false
 }

@@ -14,6 +14,7 @@ The system is designed to:
 * Generate log files with date, time and PC name
 * Allow cleaning backups safely
 * Work manually or via Windows Task Scheduler
+* Central PC can also backup its own folders and optionally copy selected lab PCs
 
 ---
 
@@ -269,8 +270,9 @@ Now the backup will run automatically without user interaction.
 
 The central PC is responsible for:
 
-* Copying all lab backups
-* Storing them on an external hard drive
+* Copying selected lab PCs (`pcsToCopy`) from the network
+* Copying its own local folders defined in `folders`
+* Storing backups on an external hard drive
 * Future cloud sync (rclone, OneDrive, Dropbox)
 
 ## Step 1 - Create Central Backup Folder
@@ -302,11 +304,28 @@ Example:
 
 ```json
 {
+  "pcName": "CENTRAL01",
+  "pcsToCopy": ["PC471", "PC312"],
+  "deleteAfterCopy": false,
   "networkSource": "\\\\FITXERS3\\fitxers\\Backups",
+  "folders": [
+    {"name": "Documents", "source": "C:\\Users\\Central\\Documents"},
+    {"name": "Projects", "source": "D:\\CentralProjects"}
+  ],
   "localDestination": "E:\\CentralBackups",
   "logPath": "C:\\BackupCentral\\logs"
 }
 ```
+
+Important fields:
+
+* `pcName` → Name of central PC (for log files)
+* `pcsToCopy` → List of lab PCs to copy from network
+* `deleteAfterCopy` → Delete source backup after copy
+* `folders` → Local folders to backup from central PC
+* `networkSource` → Network path with lab backups
+* `localDestination` → Local mirror path (external disk)
+* `logPath` → Local folder for logs
 
 ---
 
@@ -320,6 +339,7 @@ The system includes multiple protections:
 * Fast cleanup using robocopy mirror method
 * Independent logs per PC
 * UTF-8 output to avoid encoding issues
+* Central PC respects copy history and only copies newer backups if needed
 
 ---
 
@@ -347,9 +367,34 @@ Cloud configuration will be added later in the central PC script without modifyi
 
 ---
 
-# Final Notes
+# PART 9 - Visual Flow Diagram
 
-* Do not modify the script unless necessary
-* Always test with manual backup first
-* Ensure network path permissions are correct
-* Keep at least one external backup copy (recommended)
+```mermaid
+flowchart TD
+    A[Start Lab PC Backup] --> B{Interactive or Auto?}
+    B -->|Interactive| C[Show Menu: Backup / Clean PC / Clean All / Exit]
+    B -->|Auto (-Mode backup)| D[Run Backup]
+    D --> E[Iterate folders from config]
+    E --> F[Robocopy folder -> Network Path]
+    F --> G[Generate Log with PC name & timestamp]
+    G --> H[Backup finished]
+
+    %% Central PC flow
+    I[Start Central PC Backup] --> J[Read config_central.json]
+    J --> K{pcsToCopy not empty?}
+    K -->|Yes| L[Iterate pcsToCopy]
+    L --> M[Check last log date]
+    M --> N[Copy lab PC -> local mirror]
+    N --> O{deleteAfterCopy?}
+    O -->|Yes| P[Delete source backup]
+    O -->|No| Q[Keep source backup]
+    K -->|No| R{folders not empty?}
+    R -->|Yes| S[Iterate local folders]
+    S --> T[Robocopy folder -> local mirror]
+    T --> U[Generate Log with pcName & timestamp]
+    R -->|No| V[Nothing to backup]
+
+    H -.-> I
+    Q --> R
+    P --> R
+```

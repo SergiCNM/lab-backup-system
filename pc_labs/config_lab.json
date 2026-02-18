@@ -1,6 +1,7 @@
 {
   "pcName": "pc471",
   "networkBackupPath": "\\\\fitxers3\\fitxers\\__Caracteritzacio Electrica_ICTS\\_BACKUPS",
+  "sevenZipPath": "C:\\Program Files\\7-Zip\\7z.exe",
   "folders": [  
     {
       "name": "Documentos",

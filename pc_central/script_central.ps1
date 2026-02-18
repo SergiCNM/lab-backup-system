@@ -1,110 +1,111 @@
 param (
     [string]$ConfigFile = "C:\BackupCentral\config_central.json",
-    [switch]$TestMode
+    [switch]$TestMode  # If active, window will remain open
 )
 
 # -----------------------------
 # Load configuration
 # -----------------------------
 $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
-$networkPath    = $config.networkSource
-$localMirror    = $config.localDestination
-$logPath        = $config.logPath
-$pcsToCopy      = $config.pcsToCopy
-$deleteAfterCopy= $config.deleteAfterCopy
+$pcName = $config.pcName
+$networkPath = $config.networkBackupPath   # \\FITXERS3\...\_BACKUPS
+$localMirror = $config.localMirrorPath    # Local mirror (external disk)
+$logPath = $config.logPath
+$pcsToCopy = $config.pcsToCopy
+$folders = $config.folders
+$deleteAfterCopy = $config.deleteAfterCopy -eq $true
 
+# -----------------------------
 # Prepare log folder
-if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
+# -----------------------------
+$logDir = Split-Path $logPath
+if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 
-# Daily log file for central script
+# Daily log file including pcName
 $date = Get-Date -Format "yyyyMMdd_HHmm"
-$centralLog = Join-Path $logPath ("central_log_$date.txt")
+$logFile = Join-Path $logDir ("central_log_${pcName}_$date.txt")
 
+# -----------------------------
+# Logging function
+# -----------------------------
 function Write-Log {
     param([string]$msg)
     $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $line = "$time - $msg"
     Write-Host $line
-    Add-Content -Path $centralLog -Value $line -Encoding UTF8
-}
-
-# -----------------------------
-# Helper functions
-# -----------------------------
-function Get-LastLabBackupDate($pcFolder) {
-    $logs = Get-ChildItem $pcFolder -Filter "backup_log_*.txt" -File | Sort-Object LastWriteTime -Descending
-    if ($logs.Count -eq 0) { return $null }
-    # Extract date from log name: backup_log_PC471_20260218_1430.txt
-    $match = [regex]::Match($logs[0].Name, "\d{8}_\d{4}")
-    if ($match.Success) { return [datetime]::ParseExact($match.Value, "yyyyMMdd_HHmm", $null) }
-    return $null
-}
-
-function Get-LastCentralCopyDate($localPcFolder) {
-    $file = Join-Path $localPcFolder "last_copy.txt"
-    if (!(Test-Path $file)) { return $null }
-    return Get-Content $file | ForEach-Object { [datetime]$_ }
-}
-
-function Save-LastCentralCopyDate($localPcFolder, $date) {
-    if (!(Test-Path $localPcFolder)) { New-Item -ItemType Directory -Path $localPcFolder -Force | Out-Null }
-    $file = Join-Path $localPcFolder "last_copy.txt"
-    $date.ToString("yyyy-MM-dd HH:mm:ss") | Set-Content $file
-}
-
-function UltraFastDelete($folder) {
-    $empty = Join-Path $env:TEMP "empty_folder"
-    if (!(Test-Path $empty)) { New-Item -ItemType Directory -Path $empty | Out-Null }
-    robocopy $empty $folder /MIR /R:1 /W:1 /NFL /NDL /NP | Out-Null
-    Remove-Item $folder -Recurse -Force -ErrorAction SilentlyContinue
+    Add-Content -Path $logFile -Value $line -Encoding UTF8
 }
 
 # -----------------------------
 # Start backup
 # -----------------------------
-Write-Log "===== CENTRAL BACKUP STARTED ====="
+Write-Log "===== CENTRAL BACKUP STARTED ($pcName) ====="
 
-if (!(Test-Path $networkPath)) {
-    Write-Log "ERROR: Cannot access network backup path: $networkPath"
-    if (-not $TestMode) { exit 1 }
-}
-
+# Create local mirror folder if not exists
 if (!(Test-Path $localMirror)) { New-Item -ItemType Directory -Path $localMirror -Force | Out-Null }
 
-# Iterate only selected PCs
-$pcFolders = Get-ChildItem -Path $networkPath -Directory | Where-Object { $pcsToCopy -contains $_.Name }
+# -----------------------------
+# 1. Copy PCs from network
+# -----------------------------
+if ($pcsToCopy -and $pcsToCopy.Count -gt 0) {
+    Write-Log "Starting backup of lab PCs: $($pcsToCopy -join ', ')"
 
-foreach ($pc in $pcFolders) {
-    $source = $pc.FullName
-    $dest   = Join-Path $localMirror $pc.Name
+    foreach ($pc in $pcsToCopy) {
+        $source = Join-Path $networkPath $pc
+        $dest = Join-Path $localMirror $pc
 
-    $lastLabDate     = Get-LastLabBackupDate $source
-    $lastCentralDate = Get-LastCentralCopyDate $dest
+        if (!(Test-Path $source)) {
+            Write-Log "WARNING: Source folder for $pc not found: $source"
+            continue
+        }
 
-    if ($lastLabDate -eq $null) {
-        Write-Log "No lab backup logs found for $($pc.Name). Skipping."
-        continue
+        Write-Log "Syncing $source -> $dest (mirror)"
+        robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
+
+        Write-Log "Finished syncing $pc"
+
+        if ($deleteAfterCopy) {
+            Write-Log "Deleting source backup of $pc"
+            $empty = Join-Path $env:TEMP "empty_folder"
+            if (!(Test-Path $empty)) { New-Item -ItemType Directory -Path $empty | Out-Null }
+            robocopy $empty $source /MIR /R:1 /W:1 /NFL /NDL /NP
+            Write-Log "Source backup $pc deleted"
+        }
     }
-
-    if ($lastCentralDate -ne $null -and $lastLabDate -le $lastCentralDate) {
-        Write-Log "$($pc.Name) is up-to-date. Skipping."
-        continue
-    }
-
-    Write-Log "Syncing $source -> $dest (mirror)"
-    robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /LOG+:$centralLog
-
-    Write-Log "Finished syncing $($pc.Name)"
-    Save-LastCentralCopyDate $dest $lastLabDate
-
-    if ($deleteAfterCopy) {
-        Write-Log "Deleting lab backup $($pc.Name)"
-        UltraFastDelete $source
-        Write-Log "Lab backup deleted: $($pc.Name)"
-    }
+} else {
+    Write-Log "No PCs listed in pcsToCopy. Skipping network backup."
 }
 
-Write-Log "===== CENTRAL BACKUP FINISHED ====="
+# -----------------------------
+# 2. Copy local folders of central PC
+# -----------------------------
+if ($folders -and $folders.Count -gt 0) {
+    Write-Log "Starting backup of local folders for central PC: $pcName"
+
+    foreach ($folder in $folders) {
+        $source = $folder.source
+        $dest = Join-Path $localMirror $folder.name
+
+        if (!(Test-Path $source)) {
+            Write-Log "WARNING: Source folder not found: $source"
+            continue
+        }
+
+        if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+
+        Write-Log "Syncing $source -> $dest (mirror)"
+        robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
+
+        Write-Log "Finished syncing folder: $($folder.name)"
+    }
+} else {
+    Write-Log "No local folders defined in configuration. Skipping central PC backup."
+}
+
+# -----------------------------
+# Finish
+# -----------------------------
+Write-Log "===== CENTRAL BACKUP FINISHED ($pcName) ====="
 
 if ($TestMode) {
     Write-Host ""

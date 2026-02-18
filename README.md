@@ -1,5 +1,7 @@
 # Lab Backup System - Installation and Usage Guide
 
+<img width="1536" height="1024" alt="Diagrama sistema de còpies de seguretat" src="https://github.com/user-attachments/assets/51044b55-5a5d-49d2-8d71-64370f7e288d" />
+
 ## Overview
 
 This repository contains two backup scripts designed for a laboratory environment:
@@ -365,36 +367,3 @@ The system is prepared to support:
 
 Cloud configuration will be added later in the central PC script without modifying lab PCs.
 
----
-
-# PART 9 - Visual Flow Diagram
-
-```mermaid
-flowchart TD
-    A[Start Lab PC Backup] --> B{Interactive or Auto?}
-    B -->|Interactive| C[Show Menu: Backup / Clean PC / Clean All / Exit]
-    B -->|Auto (-Mode backup)| D[Run Backup]
-    D --> E[Iterate folders from config]
-    E --> F[Robocopy folder -> Network Path]
-    F --> G[Generate Log with PC name & timestamp]
-    G --> H[Backup finished]
-
-    %% Central PC flow
-    I[Start Central PC Backup] --> J[Read config_central.json]
-    J --> K{pcsToCopy not empty?}
-    K -->|Yes| L[Iterate pcsToCopy]
-    L --> M[Check last log date]
-    M --> N[Copy lab PC -> local mirror]
-    N --> O{deleteAfterCopy?}
-    O -->|Yes| P[Delete source backup]
-    O -->|No| Q[Keep source backup]
-    K -->|No| R{folders not empty?}
-    R -->|Yes| S[Iterate local folders]
-    S --> T[Robocopy folder -> local mirror]
-    T --> U[Generate Log with pcName & timestamp]
-    R -->|No| V[Nothing to backup]
-
-    H -.-> I
-    Q --> R
-    P --> R
-```

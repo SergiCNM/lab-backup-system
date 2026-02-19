@@ -29,6 +29,21 @@ if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Nul
 # Log con fecha, hora y nombre del PC
 $logFile = Join-Path $logDir ("${pcName}_backup_log_{0:yyyyMMdd_HHmm}.txt" -f (Get-Date))
 
+function Check-Network {
+    param (
+        [string]$PathToCheck
+    )
+
+    if (-not (Test-Path $PathToCheck)) {
+        $msg = "ERROR: Network path is not accessible: $PathToCheck"
+        Write-Host $msg -ForegroundColor Red
+        Write-Log $msg
+        exit 1
+    } else {
+        Write-Log "Network path accessible: $PathToCheck"
+    }
+}
+
 function Show-Menu {
     Write-Host ""
     Write-Host "===== LAB BACKUP SYSTEM ====="
@@ -222,6 +237,8 @@ function Clean-All {
 
     Write-Host "All backups removed from network storage."
 }
+
+Check-Network -PathToCheck $networkPath
 
 # Automatic mode (for Task Scheduler)
 switch ($Mode.ToLower()) {

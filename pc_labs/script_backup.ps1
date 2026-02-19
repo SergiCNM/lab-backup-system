@@ -85,66 +85,63 @@ function Run-Backup {
             robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
         }
         # -------------------------------------------------
-        # MODO 2: COMPRESSED BACKUP (ZIP)
-        # -------------------------------------------------
-        else {
-            Write-Host "Compressed backup enabled for: $name" -ForegroundColor Cyan
-
-            # Carpeta temporal para copiar los archivos antes de zip
-            $tempFolder = Join-Path $env:TEMP ("backup_" + $pcName + "_" + $name)
-            if (Test-Path $tempFolder) { Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue }
-            New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
-            Write-Host "Copying to temp folder: $tempFolder"
-
-            # Calcular tamaño de la carpeta de origen
-            $folderSize = (Get-ChildItem -Path $source -Recurse | Measure-Object -Property Length -Sum).Sum
-            if (-not $folderSize) { $folderSize = 0 }
-
-            # Comprobar espacio libre en unidad temporal
-            $psDrive = (Get-Item $tempFolder).PSDrive
-            $freeSpace = $psDrive.Free
-
-            if ($freeSpace -lt 2 * $folderSize) {
-                Write-Host "WARNING: Not enough free space on $($psDrive.Name): to compress folder '$name'." -ForegroundColor Yellow
-                Write-Host "Fallback to normal mirror copy."
-
-                $dest = Join-Path $pcBackupPath $name
-                if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
-                robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
-                continue
-            }
-
-            # Copiar contenido a carpeta temporal
-            robocopy $source $tempFolder /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /LOG:$logFile /NFL /NDL /NP
-
-            # Crear ZIP con 7-Zip
-            $zipFileName = "${name}.zip"
-            $zipDest = Join-Path $pcBackupPath $zipFileName
-            $localZip = Join-Path $env:TEMP ("${pcName}_${name}.zip")
-            if (Test-Path $localZip) { Remove-Item $localZip -Force }
-
-            Write-Host "Creating ZIP: $localZip"
-            $sevenZipExe = $sevenZipPath
-            $sevenZipArgs = "a -tzip `"$localZip`" `"$tempFolder\*`" -mx=9"
-
-            try {
-                $proc = Start-Process -FilePath $sevenZipExe -ArgumentList $sevenZipArgs -Wait -NoNewWindow -PassThru
-                if ($proc.ExitCode -ne 0) { throw "7-Zip failed with exit code $($proc.ExitCode)" }
-
-                Write-Host "Copying ZIP to network: $zipDest"
-                Copy-Item -Path $localZip -Destination $zipDest -Force
-            } catch {
-                Write-Host "ERROR: Could not create ZIP for '$name'. Falling back to normal mirror." -ForegroundColor Red
-                Write-Host $_
-                $dest = Join-Path $pcBackupPath $name
-                if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
-                robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
-            } finally {
-                # Cleanup temporal
-                Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
-                Remove-Item $localZip -Force -ErrorAction SilentlyContinue
-            }
-        }
+		# MODO 2: COMPRESSED BACKUP (ZIP)
+		# -------------------------------------------------
+		else {
+		    Write-Host "COMPRESS mode enabled for folder: $name" -ForegroundColor Cyan
+		
+		    # Carpeta temporal
+		    $tempFolder = Join-Path $env:TEMP ("backup_" + $pcName + "_" + $name)
+		    if (Test-Path $tempFolder) { Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue }
+		    New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
+		
+		    # Tamaño carpeta y espacio libre
+		    $folderSize = (Get-ChildItem -Path $source -Recurse | Measure-Object -Property Length -Sum).Sum
+		    if (-not $folderSize) { $folderSize = 0 }
+		
+		    $driveInfo = Get-PSDrive -Name ([string](Split-Path $tempFolder -Qualifier).TrimEnd(':'))
+		    if ($driveInfo.Free -lt 2 * $folderSize) {
+		        Write-Host "WARNING: Not enough free space on $($driveInfo.Name): fallback to MIRROR" -ForegroundColor Yellow
+		        $dest = Join-Path $pcBackupPath $name
+		        if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+		        robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
+		        return
+		    }
+		
+		    # Copiar a temp
+		    robocopy $source $tempFolder /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /LOG:$logFile /NFL /NDL /NP
+		
+		    # Preparar ZIP
+		    $zipDest = Join-Path $pcBackupPath ($name + ".zip")
+		    $localZip = Join-Path $env:TEMP ("${pcName}_${name}.zip")
+		    if (Test-Path $localZip) { Remove-Item $localZip -Force }
+		
+		    try {
+		        if (Test-Path $sevenZipPath) {
+		            Write-Host "Creating ZIP using 7-Zip: $localZip"
+		            & $sevenZipPath a -tzip "$localZip" "$tempFolder\*" -mx=9 | Out-Null
+		        } else {
+		            Write-Host "7-Zip not found, using Compress-Archive (slower)" -ForegroundColor Yellow
+		            Compress-Archive -Path "$tempFolder\*" -DestinationPath $localZip -Force
+		        }
+		
+		        if (Test-Path $localZip) {
+		            Copy-Item -Path $localZip -Destination $zipDest -Force
+		            Write-Host "Compressed backup completed: $zipDest" -ForegroundColor Cyan
+		        } else {
+		            throw "ZIP file was not created."
+		        }
+		    } catch {
+		        Write-Host "ERROR: Could not create ZIP for '$name'. Falling back to MIRROR" -ForegroundColor Red
+		        Write-Host $_
+		        $dest = Join-Path $pcBackupPath $name
+		        if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+		        robocopy $source $dest /MIR /Z /R:2 /W:5 /FFT /XA:H /MT:16 /TEE /LOG:$logFile
+		    } finally {
+		        Remove-Item $tempFolder -Recurse -Force -ErrorAction SilentlyContinue
+		        Remove-Item $localZip -Force -ErrorAction SilentlyContinue
+		    }
+		}
     }
 
     Write-Host "===== BACKUP FINISHED ====="

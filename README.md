@@ -12,7 +12,7 @@ This repository contains two backup scripts designed for a laboratory environmen
 The system is designed to:
 
 * Automatically backup selected folders
-* Store backups in a network path (for example: `\\FITXERS3\fitxers\Backups`)
+* Store backups in a network path (for example: `\\FITXERS3\fitxers\__Caracteritzacio Electrica_ICTS\_BACKUPS`)
 * Generate log files with date, time and PC name
 * Allow cleaning backups safely
 * Work manually or via Windows Task Scheduler
@@ -48,20 +48,20 @@ The central backup computer must only use the files inside `pc_central`.
 On the server or NAS (example):
 
 ```
-\\FITXERS3\fitxers\Backups\
+\\FITXERS3\fitxers\__Caracteritzacio Electrica_ICTS\_BACKUPS\
 ```
 
 Inside this folder, each PC will automatically create:
 
 ```
-\\FITXERS3\fitxers\Backups\PC_NAME\
+\\FITXERS3\fitxers\__Caracteritzacio Electrica_ICTS\_BACKUPS\PC_NAME\
 ```
 
 Example:
 
 ```
-\\FITXERS3\fitxers\Backups\PC471\
-\\FITXERS3\fitxers\Backups\PC312\
+\\FITXERS3\fitxers\__Caracteritzacio Electrica_ICTS\_BACKUPS\PC471\
+\\FITXERS3\fitxers\__Caracteritzacio Electrica_ICTS\_BACKUPS\PC312\
 ```
 
 Make sure:
@@ -100,7 +100,7 @@ Example configuration:
 ```json
 {
   "pcName": "PC471",
-  "networkBackupPath": "\\\\FITXERS3\\fitxers\\Backups",
+  "networkBackupPath": "\\\\FITXERS3\\fitxers\\__Caracteritzacio Electrica_ICTS\\_BACKUPS",
   "logPath": "C:\\BackupLab\\logs",
   "sevenZipPath": "C:\\Program Files\\7-Zip\\7z.exe",
   "folders": [
@@ -128,6 +128,24 @@ Important fields:
 * `compress` (optional) →
     * `true`  = ZIP compression using 7-Zip
     * `false` = Fast mirror backup (robocopy)
+
+### Folder Naming Recommendation (Important)
+
+Folder `name` is used as the destination folder and ZIP filename.
+
+It is recommended to:
+- Avoid special characters
+- Avoid very long names
+- Prefer simple names (e.g. `GitHub`, `Measurements`, `Projects`)
+
+Example:
+* Good:
+`"name": "GitHub"`
+
+* Avoid:
+`"name": "Desarrollo GITHUB Backup Version Final"`
+
+**This improves compatibility with ZIP creation and long path handling.**
 
 ---
 
@@ -253,7 +271,7 @@ C:\BackupLab\logs\
 After the backup finishes, the log file is also copied to:
 
 ```
-\\FITXERS3\fitxers\Backups\PC_NAME\
+\\FITXERS3\fitxers\__Caracteritzacio Electrica_ICTS\_BACKUPS\PC_NAME\
 ```
 
 This allows the central computer to:
@@ -421,6 +439,7 @@ The system includes multiple protections:
 * Security check to avoid deleting wrong paths
 * Fast cleanup using robocopy mirror method
 * Independent logs per PC
+* Automatic fallback to non-compressed backup if compression fails or disk space is insufficient
 * UTF-8 output to avoid encoding issues
 * Central PC respects copy history and only copies newer backups if needed
 

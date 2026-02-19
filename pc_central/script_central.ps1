@@ -99,7 +99,44 @@ function Send-BackupEmail {
 # -----------------------------
 Write-Log "===== CENTRAL BACKUP STARTED ($pcName) ====="
 
+# -----------------------------
+# Check local mirror drive availability (CRITICAL)
+# -----------------------------
+$driveRoot = [System.IO.Path]::GetPathRoot($localMirror)
+
+if (-not (Test-Path $driveRoot)) {
+    $errorMsg = "CRITICAL ERROR: Backup drive not accessible: $driveRoot (localMirrorPath = $localMirror)"
+    
+    Write-Host $errorMsg -ForegroundColor Red
+    Write-Log $errorMsg
+
+    # Send email if configured and enabled
+    if ($null -ne $config.email -and $config.email.enabled -eq $true) {
+        $subject = "CRITICAL: Central Backup FAILED on $pcName"
+        $body = @"
+The central backup has been aborted.
+
+Reason:
+Backup destination drive is not accessible.
+
+Configured path:
+$localMirror
+
+Drive checked:
+$driveRoot
+
+Timestamp:
+$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+"@
+        Send-BackupEmail -subject $subject -body $body
+    }
+
+    exit 1
+}
+
+# ----------------------------------------
 # Create local mirror folder if not exists
+# ----------------------------------------
 if (!(Test-Path $localMirror)) { New-Item -ItemType Directory -Path $localMirror -Force | Out-Null }
 
 # -----------------------------

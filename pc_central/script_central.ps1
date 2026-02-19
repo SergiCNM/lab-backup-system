@@ -77,26 +77,82 @@ if ($pcsToCopy -and $pcsToCopy.Count -gt 0) {
 }
 
 # -----------------------------
-# 2. Copy local folders of central PC
+# 2. Copy local folders of central PC (with compress support)
 # -----------------------------
 if ($folders -and $folders.Count -gt 0) {
     Write-Log "Starting backup of local folders for central PC: $pcName"
 
     foreach ($folder in $folders) {
         $source = $folder.source
-        $dest = Join-Path $localMirror $folder.name
+        $name = $folder.name
+        $compress = $false
+
+        # Backward compatibility: if compress not defined -> false
+        if ($null -ne $folder.compress) {
+            $compress = [bool]$folder.compress
+        }
 
         if (!(Test-Path $source)) {
             Write-Log "WARNING: Source folder not found: $source"
             continue
         }
 
-        if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+        if ($compress) {
+            Write-Log "COMPRESS mode enabled for folder: $name"
 
-        Write-Log "Syncing $source -> $dest (mirror)"
-        robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
+            $zipDest = Join-Path $localMirror ($name + ".zip")
+            $tempZip = Join-Path $env:TEMP ($pcName + "_" + $name + ".zip")
 
-        Write-Log "Finished syncing folder: $($folder.name)"
+            # Delete old temp zip if exists
+            if (Test-Path $tempZip) {
+                Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+            }
+
+            try {
+                Write-Log "Creating ZIP: $tempZip"
+
+                # Use 7-Zip if available (recommended for large datasets)
+                $sevenZip = "C:\Program Files\7-Zip\7z.exe"
+
+                if (Test-Path $sevenZip) {
+                    & $sevenZip a -tzip "$tempZip" "$source\*" -mx=5 | Out-Null
+                } else {
+                    Write-Log "7-Zip not found. Using Compress-Archive (slower)."
+                    Compress-Archive -Path "$source\*" -DestinationPath $tempZip -Force
+                }
+
+                if (Test-Path $tempZip) {
+                    Write-Log "Copying ZIP to mirror: $zipDest"
+                    Copy-Item -Path $tempZip -Destination $zipDest -Force
+                    Write-Log "Finished compressed backup: $name"
+                } else {
+                    Write-Log "ERROR: ZIP was not created for $name"
+                }
+            }
+            catch {
+                Write-Log "ERROR during compression of $name : $_"
+            }
+            finally {
+                if (Test-Path $tempZip) {
+                    Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+                }
+            }
+
+        } else {
+            # Normal mirror mode (current behavior)
+            $dest = Join-Path $localMirror $name
+
+            if (!(Test-Path $dest)) { 
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null 
+            }
+
+            Write-Log "MIRROR mode for folder: $name"
+            Write-Log "Syncing $source -> $dest (mirror)"
+
+            robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
+
+            Write-Log "Finished syncing folder: $name"
+        }
     }
 } else {
     Write-Log "No local folders defined in configuration. Skipping central PC backup."

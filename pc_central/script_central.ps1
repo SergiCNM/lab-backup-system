@@ -25,7 +25,7 @@ $date = Get-Date -Format "yyyyMMdd_HHmm"
 $logFile = Join-Path $logPath ("central_log_${pcName}_$date.txt")
 
 # -----------------------------
-# Check network path availability
+# Check network path availability (central PC)
 # -----------------------------
 function Check-Network {
     param (
@@ -33,12 +33,13 @@ function Check-Network {
     )
 
     if (-not (Test-Path $PathToCheck)) {
-        $msg = "ERROR: Network path is not accessible: $PathToCheck"
-        Write-Host $msg -ForegroundColor Red
+        $msg = "WARNING: Network path is not accessible: $PathToCheck. Skipping network copy."
+        Write-Host $msg -ForegroundColor Yellow
         Write-Log $msg
-        exit 1
+        return $false
     } else {
         Write-Log "Network path accessible: $PathToCheck"
+        return $true
     }
 }
 
@@ -96,8 +97,6 @@ function Send-BackupEmail {
 # -----------------------------
 # Start backup
 # -----------------------------
-Check-Network -PathToCheck $networkPath
-
 Write-Log "===== CENTRAL BACKUP STARTED ($pcName) ====="
 
 # Create local mirror folder if not exists
@@ -107,29 +106,33 @@ if (!(Test-Path $localMirror)) { New-Item -ItemType Directory -Path $localMirror
 # 1. Copy PCs from network
 # -----------------------------
 if ($pcsToCopy -and $pcsToCopy.Count -gt 0) {
-    Write-Log "Starting backup of lab PCs: $($pcsToCopy -join ', ')"
-
-    foreach ($pc in $pcsToCopy) {
-        $source = Join-Path $networkPath $pc
-        $dest = Join-Path $localMirror $pc
-
-        if (!(Test-Path $source)) {
-            Write-Log "WARNING: Source folder for $pc not found: $source"
-            continue
+    $networkAvailable = Check-Network -PathToCheck $networkPath
+    if ($networkAvailable) {
+        Write-Log "Starting backup of lab PCs: $($pcsToCopy -join ', ')"
+        foreach ($pc in $pcsToCopy) {
+            $source = Join-Path $networkPath $pc
+            $dest = Join-Path $localMirror $pc
+    
+            if (!(Test-Path $source)) {
+                Write-Log "WARNING: Source folder for $pc not found: $source"
+                continue
+            }
+    
+            Write-Log "Syncing $source -> $dest (mirror)"
+            robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
+    
+            Write-Log "Finished syncing $pc"
+    
+            if ($deleteAfterCopy) {
+                Write-Log "Deleting source backup of $pc"
+                $empty = Join-Path $env:TEMP "empty_folder"
+                if (!(Test-Path $empty)) { New-Item -ItemType Directory -Path $empty | Out-Null }
+                robocopy $empty $source /MIR /R:1 /W:1 /NFL /NDL /NP
+                Write-Log "Source backup $pc deleted"
+            }
         }
-
-        Write-Log "Syncing $source -> $dest (mirror)"
-        robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
-
-        Write-Log "Finished syncing $pc"
-
-        if ($deleteAfterCopy) {
-            Write-Log "Deleting source backup of $pc"
-            $empty = Join-Path $env:TEMP "empty_folder"
-            if (!(Test-Path $empty)) { New-Item -ItemType Directory -Path $empty | Out-Null }
-            robocopy $empty $source /MIR /R:1 /W:1 /NFL /NDL /NP
-            Write-Log "Source backup $pc deleted"
-        }
+    } else {
+        Write-Log "Network unavailable, only local mirror backups will run."
     }
 } else {
     Write-Log "No PCs listed in pcsToCopy. Skipping network backup."

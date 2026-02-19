@@ -18,12 +18,11 @@ $deleteAfterCopy = $config.deleteAfterCopy -eq $true
 # -----------------------------
 # Prepare log folder
 # -----------------------------
-$logDir = Split-Path $logPath
-if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
 
 # Daily log file including pcName
 $date = Get-Date -Format "yyyyMMdd_HHmm"
-$logFile = Join-Path $logDir ("central_log_${pcName}_$date.txt")
+$logFile = Join-Path $logPath ("central_log_${pcName}_$date.txt")
 
 # -----------------------------
 # Logging function

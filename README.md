@@ -410,7 +410,17 @@ Example:
       "source": "D:\\Documentos\\MESURES",
       "compress": false
     }
-  ]
+  ],
+  "email": {
+    "enabled": true,
+    "smtpServer": "smtp.gmail.com",
+    "smtpPort": 587,
+    "useSsl": true,
+    "from": "imbcnm.labs@gmail.com",
+    "to": "sergi.sanchez@imb-cnm.csic.es",
+    "username": "imbcnm.labs@gmail.com",
+    "password": "TU_APP_PASSWORD_GMAIL"
+  }
 }
 ```
 
@@ -431,7 +441,11 @@ Important fields:
     * `false` = Fast mirror backup (robocopy)
     * Not declared → defaults to `false` (mirror)
       
-    - If compression fails or disk space is insufficient, the backup automatically falls back to mirror mode.
+    * If compression fails or disk space is insufficient, the backup automatically falls back to mirror mode
+ 
+* `email` (optional) → Configure email options to send a notification at the end of the backup to the lab responsible
+    * If `enabled = False` or the email section is not defined, no email will be sent
+    * If the email section is defined and `enabled = True`, the email will be sent
 
 ---
 

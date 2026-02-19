@@ -14,6 +14,7 @@ $logPath = $config.logPath
 $pcsToCopy = $config.pcsToCopy
 $folders = $config.folders
 $deleteAfterCopy = $config.deleteAfterCopy -eq $true
+$sevenZipPath = $config.sevenZipPath
 
 # -----------------------------
 # Prepare log folder
@@ -23,6 +24,46 @@ if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force 
 # Daily log file including pcName
 $date = Get-Date -Format "yyyyMMdd_HHmm"
 $logFile = Join-Path $logPath ("central_log_${pcName}_$date.txt")
+
+# -----------------------------
+# Check 7-Zip availability (if compression is used)
+# -----------------------------
+function Check-SevenZip {
+    param(
+        [array]$foldersConfig,
+        [string]$sevenZipPath
+    )
+
+    # Check if any folder has compress = true
+    $compressionRequired = $false
+
+    foreach ($f in $foldersConfig) {
+        if ($null -ne $f.compress -and [bool]$f.compress -eq $true) {
+            $compressionRequired = $true
+            break
+        }
+    }
+
+    if (-not $compressionRequired) {
+        Write-Log "Compression not enabled in any folder. Skipping 7-Zip check."
+        return $false
+    }
+
+    # Compression is required but path not defined
+    if ([string]::IsNullOrWhiteSpace($sevenZipPath)) {
+        Write-Log "WARNING: Compression enabled but sevenZipPath not defined in config. Falling back to mirror mode."
+        return $false
+    }
+
+    # Path defined but executable not found
+    if (-not (Test-Path $sevenZipPath)) {
+        Write-Log "WARNING: 7-Zip not found at: $sevenZipPath. Compression will be disabled and mirror mode will be used."
+        return $false
+    }
+
+    Write-Log "7-Zip detected at: $sevenZipPath. Compression available."
+    return $true
+}
 
 # -----------------------------
 # Check network path availability (central PC)
@@ -98,6 +139,11 @@ function Send-BackupEmail {
 # Start backup
 # -----------------------------
 Write-Log "===== CENTRAL BACKUP STARTED ($pcName) ====="
+
+# -----------------------------
+# Validate compression tool
+# -----------------------------
+$sevenZipAvailable = Check-SevenZip -foldersConfig $folders -sevenZipPath $sevenZipPath
 
 # -----------------------------
 # Check local mirror drive availability (CRITICAL)
@@ -197,7 +243,11 @@ if ($folders -and $folders.Count -gt 0) {
         }
 
         if ($compress) {
-            Write-Log "COMPRESS mode enabled for folder: $name"
+            if ($sevenZipPath -and (Test-Path $sevenZipPath)) {
+                Write-Log "COMPRESS mode (7-Zip) enabled for folder: $name"
+            } else {
+                Write-Log "COMPRESS mode enabled for folder: $name (fallback: Compress-Archive)"
+            }
 
             $zipDest = Join-Path $localMirror ($name + ".zip")
             $tempZip = Join-Path $env:TEMP ($pcName + "_" + $name + ".zip")
@@ -209,17 +259,17 @@ if ($folders -and $folders.Count -gt 0) {
 
             try {
                 Write-Log "Creating ZIP: $tempZip"
-
-                # Use 7-Zip if available (recommended for large datasets)
-                $sevenZip = "C:\Program Files\7-Zip\7z.exe"
-
-                if (Test-Path $sevenZip) {
-                    & $sevenZip a -tzip "$tempZip" "$source\*" -mx=5 | Out-Null
-                } else {
-                    Write-Log "7-Zip not found. Using Compress-Archive (slower)."
+            
+                # Priority 1: sevenZipPath from config
+                if ($sevenZipPath -and (Test-Path $sevenZipPath)) {
+                    Write-Log "Using 7-Zip from config: $sevenZipPath"
+                    & $sevenZipPath a -tzip "$tempZip" "$source\*" -mx=5 | Out-Null
+                }
+                else {
+                    Write-Log "WARNING: 7-Zip not found or not configured. Using Compress-Archive (slower fallback)."
                     Compress-Archive -Path "$source\*" -DestinationPath $tempZip -Force
                 }
-
+            
                 if (Test-Path $tempZip) {
                     Write-Log "Copying ZIP to mirror: $zipDest"
                     Copy-Item -Path $tempZip -Destination $zipDest -Force

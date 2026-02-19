@@ -25,6 +25,24 @@ $date = Get-Date -Format "yyyyMMdd_HHmm"
 $logFile = Join-Path $logPath ("central_log_${pcName}_$date.txt")
 
 # -----------------------------
+# Check network path availability
+# -----------------------------
+function Check-Network {
+    param (
+        [string]$PathToCheck
+    )
+
+    if (-not (Test-Path $PathToCheck)) {
+        $msg = "ERROR: Network path is not accessible: $PathToCheck"
+        Write-Host $msg -ForegroundColor Red
+        Write-Log $msg
+        exit 1
+    } else {
+        Write-Log "Network path accessible: $PathToCheck"
+    }
+}
+
+# -----------------------------
 # Logging function
 # -----------------------------
 function Write-Log {
@@ -78,6 +96,8 @@ function Send-BackupEmail {
 # -----------------------------
 # Start backup
 # -----------------------------
+Check-Network -PathToCheck $networkPath
+
 Write-Log "===== CENTRAL BACKUP STARTED ($pcName) ====="
 
 # Create local mirror folder if not exists

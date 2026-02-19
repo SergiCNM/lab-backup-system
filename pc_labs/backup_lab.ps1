@@ -238,7 +238,7 @@ function Clean-All {
     Write-Host "All backups removed from network storage."
 }
 
-Check-Network -PathToCheck $networkPath
+Check-Network -PathToCheck $networkBase
 
 # Automatic mode (for Task Scheduler)
 switch ($Mode.ToLower()) {

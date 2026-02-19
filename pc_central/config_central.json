@@ -11,5 +11,15 @@
       "source": "D:\\Documentos\\MESURES",
       "compress": false
     }
-  ]
+  ],
+  "email": {
+    "enabled": true,
+    "smtpServer": "smtp.gmail.com",
+    "smtpPort": 587,
+    "useSsl": true,
+    "from": "imbcnm.labs@gmail.com",
+    "to": "sergi.sanchez@imb-cnm.csic.es",
+    "username": "imbcnm.labs@gmail.com",
+    "password": "TU_APP_PASSWORD_GMAIL"
+  }
 }

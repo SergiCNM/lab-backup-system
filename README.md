@@ -129,7 +129,7 @@ Important fields:
     * `true`  = ZIP compression using 7-Zip
     * `false` = Fast mirror backup (robocopy)
     * Not declared → defaults to `false` (mirror)
-
+ 
 ### Folder Naming Recommendation (Important)
 
 Folder `name` is used as the destination folder and ZIP filename.
@@ -226,6 +226,7 @@ You will see a menu:
 ## Compressed Backup Mode (ZIP per Folder)
 
 The system supports per-folder compression using 7-Zip.
+You can download 7-zip application at <a href="https://www.7-zip.org/" target="_blank">https://www.7-zip.org/</a>
 
 If `"compress": true` is enabled in a folder configuration, the script will:
 
@@ -311,7 +312,7 @@ Laboratory PCs:
 - Windows 10/11
 - PowerShell 5.1 or higher
 - Network access to backup storage
-- 7-Zip installed (required if compression is used)
+- 7-Zip installed (required if compression is used - <a href="https://www.7-zip.org/" target="_blank">https://www.7-zip.org/</a>)
 
 Central PC:
 - Windows 10/11

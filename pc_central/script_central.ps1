@@ -36,6 +36,46 @@ function Write-Log {
 }
 
 # -----------------------------
+# Email function
+# -----------------------------
+function Send-BackupEmail {
+    param(
+        [string]$subject,
+        [string]$body
+    )
+
+    # Verificar si existe la sección email y si está habilitado
+    if (-not ($config.PSObject.Properties.Name -contains "email") -or -not $config.email.enabled) {
+        Write-Log "Email not configured or disabled. Skipping email."
+        return
+    }
+
+    try {
+        $smtpParams = @{
+            SmtpServer = $config.email.smtpServer
+            Port       = $config.email.smtpPort
+            UseSsl     = $config.email.useSsl
+            From       = $config.email.from
+            To         = $config.email.to
+            Subject    = $subject
+            Body       = $body
+            BodyAsHtml = $false
+        }
+
+        if ($config.email.PSObject.Properties.Name -contains "username" -and $config.email.username -and $config.email.password) {
+            $securePwd = ConvertTo-SecureString $config.email.password -AsPlainText -Force
+            $cred = New-Object System.Management.Automation.PSCredential($config.email.username, $securePwd)
+            $smtpParams.Credential = $cred
+        }
+
+        Send-MailMessage @smtpParams
+        Write-Log "Email sent to $($config.email.to)"
+    } catch {
+        Write-Log "ERROR: Could not send email. $_"
+    }
+}
+
+# -----------------------------
 # Start backup
 # -----------------------------
 Write-Log "===== CENTRAL BACKUP STARTED ($pcName) ====="
@@ -156,6 +196,10 @@ if ($folders -and $folders.Count -gt 0) {
 } else {
     Write-Log "No local folders defined in configuration. Skipping central PC backup."
 }
+
+$subject = "Backup finished for $pcName - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+$body = Get-Content $logFile -Raw
+Send-BackupEmail -subject $subject -body $body
 
 # -----------------------------
 # Finish

@@ -128,6 +128,7 @@ Important fields:
 * `compress` (optional) →
     * `true`  = ZIP compression using 7-Zip
     * `false` = Fast mirror backup (robocopy)
+    * Not declared → defaults to `false` (mirror)
 
 ### Folder Naming Recommendation (Important)
 
@@ -145,7 +146,7 @@ Example:
 * Avoid:
 `"name": "Desarrollo GITHUB Backup Version Final"`
 
-**This improves compatibility with ZIP creation and long path handling.**
+**This improves compatibility with ZIP creation and long path handling on both lab PCs and central PC.**
 
 ---
 
@@ -300,11 +301,8 @@ Example:
 - Folder size: 500 MB
 - Required free space: ~1 GB on C: drive
 
-If there is NOT enough free space:
-- The script will automatically log a warning
-- Compression will be skipped
-- A normal mirror backup (robocopy) will be performed instead
-- The backup will NOT fail
+If there is NOT enough free space on the TEMP drive, or 7-Zip fails / is not found, the script will automatically log a warning and perform a **normal mirror backup (robocopy)** instead.  
+The backup will NOT fail.
   
 ---
 ## System Requirements
@@ -409,7 +407,8 @@ Example:
   "folders": [
     {
       "name": "Medidas",
-      "source": "D:\\Documentos\\MESURES"
+      "source": "D:\\Documentos\\MESURES",
+      "compress": false
     }
   ]
 }
@@ -427,6 +426,12 @@ Important fields:
 * `pcsToCopy` → List of lab PCs to copy from network; if empty, skip network copy
 * `deleteAfterCopy` → Delete source backup after copy (true/false)
 * `folders` → Local folders to backup from central PC
+* `compress` (optional) →
+    * `true`  = ZIP compression using 7-Zip
+    * `false` = Fast mirror backup (robocopy)
+    * Not declared → defaults to `false` (mirror)
+      
+    - If compression fails or disk space is insufficient, the backup automatically falls back to mirror mode.
 
 ---
 
@@ -439,7 +444,7 @@ The system includes multiple protections:
 * Security check to avoid deleting wrong paths
 * Fast cleanup using robocopy mirror method
 * Independent logs per PC
-* Automatic fallback to non-compressed backup if compression fails or disk space is insufficient
+* Automatic fallback to non-compressed backup if compression fails or disk space is insufficient (applies to both lab PCs and central PC)
 * UTF-8 output to avoid encoding issues
 * Central PC respects copy history and only copies newer backups if needed
 

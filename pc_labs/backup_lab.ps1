@@ -64,6 +64,14 @@ function Test-Network {
     }
 }
 
+function Write-Log {
+    param([string]$msg)
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "$time - $msg"
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line -Encoding UTF8
+}
+
 function Run-Backup {
     Write-Host ""
     Write-Host "===== BACKUP STARTED ($pcName) ====="

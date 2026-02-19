@@ -26,11 +26,11 @@ The system is designed to:
 backup-system/
 │
 ├── pc_labs/
-│   ├── script_backup.ps1
+│   ├── backup_lab.ps1
 │   └── config_lab.json
 │
 ├── pc_central/
-│   ├── script_central.ps1
+│   ├── backup_central.ps1
 │   └── config_central.json
 │
 └── README.md
@@ -81,13 +81,13 @@ C:\BackupLab\
 
 Copy into this folder:
 
-* `script_backup.ps1`
+* `backup_lab.ps1`
 * `config_lab.json`
 
 Final structure:
 
 ```
-C:\BackupLab\script_backup.ps1
+C:\BackupLab\backup_lab.ps1
 C:\BackupLab\config_lab.json
 ```
 
@@ -181,7 +181,7 @@ C:\BackupLab\
 Run:
 
 ```powershell
-.\script_backup.ps1
+.\backup_lab.ps1
 ```
 
 You will see a menu:
@@ -200,25 +200,25 @@ You will see a menu:
 ### Run Backup
 
 ```powershell
-.\script_backup.ps1 -Mode backup
+.\backup_lab.ps1 -Mode backup
 ```
 
 ### Clean Backup of Current PC (with confirmation)
 
 ```powershell
-.\script_backup.ps1 -Mode clean-pc
+.\backup_lab.ps1 -Mode clean-pc
 ```
 
 ### Clean Backup Without Confirmation (for automation)
 
 ```powershell
-.\script_backup.ps1 -Mode clean-pc -Force
+.\backup_lab.ps1 -Mode clean-pc -Force
 ```
 
 ### Clean ALL Backups (DANGEROUS)
 
 ```powershell
-.\script_backup.ps1 -Mode clean-all
+.\backup_lab.ps1 -Mode clean-all
 ```
 
 ---
@@ -345,7 +345,7 @@ powershell.exe
 Arguments:
 
 ```
--ExecutionPolicy Bypass -File "C:\BackupLab\script_backup.ps1" -Mode backup
+-ExecutionPolicy Bypass -File "C:\BackupLab\backup_lab.ps1" -Mode backup
 ```
 
 Start in:
@@ -387,7 +387,7 @@ C:\BackupCentral\
 
 Copy:
 
-* `script_central.ps1`
+* `backup_central.ps1`
 * `config_central.json`
 
 ---

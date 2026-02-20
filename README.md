@@ -155,7 +155,7 @@ Example:
 Open PowerShell as Administrator and run:
 
 ```powershell
-Set-ExecutionPolicy RemoteSigned -Scope LocalMachine
+Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned
 ```
 
 Press:

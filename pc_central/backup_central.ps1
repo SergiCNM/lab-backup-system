@@ -15,6 +15,13 @@ $pcsToCopy = $config.pcsToCopy
 $folders = $config.folders
 $deleteAfterCopy = $config.deleteAfterCopy -eq $true
 $sevenZipPath = $config.sevenZipPath
+# -----------------------------
+# Backup summary tracking
+# -----------------------------
+$scriptStartTime = Get-Date
+$remoteSummary = @()
+$localSummary = @()
+$networkWasUsed = $false
 
 # -----------------------------
 # Prepare log folder
@@ -193,18 +200,48 @@ if ($pcsToCopy -and $pcsToCopy.Count -gt 0) {
     if ($networkAvailable) {
         Write-Log "Starting backup of lab PCs: $($pcsToCopy -join ', ')"
         foreach ($pc in $pcsToCopy) {
+	    $pcStart = Get-Date  
+	    $networkWasUsed = $true
             $source = Join-Path $networkPath $pc
             $dest = Join-Path $localMirror $pc
+	    $status = "OK"
     
             if (!(Test-Path $source)) {
                 Write-Log "WARNING: Source folder for $pc not found: $source"
-                continue
+	        $status = "SOURCE NOT FOUND"
+
+		$remoteSummary += [PSCustomObject]@{
+	            PC      = $pc
+        	    Start   = $pcStart
+	            End     = Get-Date
+        	    Status  = $status
+	        }
+        	continue
             }
     
             Write-Log "Syncing $source -> $dest (mirror)"
-            robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG:$logFile
-    
-            Write-Log "Finished syncing $pc"
+            robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG+:$logFile
+	    $rc = $LASTEXITCODE
+
+	    # Interpret robocopy exit code (important)
+	    if ($rc -ge 8) {
+        	$status = "ERROR (Robocopy code $rc)"
+	        Write-Log "ERROR syncing $pc (code $rc)"
+	    } elseif ($rc -ge 4) {
+        	$status = "WARNING (Robocopy code $rc)"
+	    } else {
+        	$status = "SUCCESS"
+	    }
+
+	    $pcEnd = Get-Date
+    	    $remoteSummary += [PSCustomObject]@{
+	        PC      = $pc
+        	Start   = $pcStart
+	        End     = $pcEnd
+        	Status  = $status
+	    }
+
+            Write-Log "Finished syncing $pc with status: $status"
     
             if ($deleteAfterCopy) {
                 Write-Log "Deleting source backup of $pc"
@@ -228,6 +265,9 @@ if ($folders -and $folders.Count -gt 0) {
     Write-Log "Starting backup of local folders for central PC: $pcName"
 
     foreach ($folder in $folders) {
+	$folderStart = Get-Date
+	$folderStatus = "OK"
+
         $source = $folder.source
         $name = $folder.name
         $compress = $false
@@ -279,6 +319,7 @@ if ($folders -and $folders.Count -gt 0) {
                 }
             }
             catch {
+		$folderStatus = "ERROR"
                 Write-Log "ERROR during compression of $name : $_"
             }
             finally {
@@ -302,14 +343,86 @@ if ($folders -and $folders.Count -gt 0) {
 
             Write-Log "Finished syncing folder: $name"
         }
+
+	$folderEnd = Get-Date
+
+	$localSummary += [PSCustomObject]@{
+	    Folder = $name
+	    Start  = $folderStart
+	    End    = $folderEnd
+	    Status = $folderStatus
+	}
     }
 } else {
     Write-Log "No local folders defined in configuration. Skipping central PC backup."
 }
 
 $subject = "Backup finished for $pcName - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-$body = Get-Content $logFile -Raw
-Send-BackupEmail -subject $subject -body $body
+
+# -----------------------------
+# Build email summary
+# -----------------------------
+$scriptEndTime = Get-Date
+$duration = New-TimeSpan -Start $scriptStartTime -End $scriptEndTime
+
+$emailBody = @"
+CENTRAL BACKUP REPORT
+=====================
+
+PC         : $pcName
+
+Start Time : $($scriptStartTime.ToString("yyyy-MM-dd HH:mm:ss"))
+End Time   : $($scriptEndTime.ToString("yyyy-MM-dd HH:mm:ss"))
+Duration   : $($duration.ToString())
+
+----------------------------------------
+REMOTE PCs BACKUP
+----------------------------------------
+"@
+
+if ($remoteSummary.Count -eq 0) {
+    $emailBody += "No remote PCs copied.`n"
+} else {
+    foreach ($item in $remoteSummary) {
+        $emailBody += @"
+
+  PC    : $($item.PC)
+  Start : $($item.Start.ToString("HH:mm:ss"))
+  End   : $($item.End.ToString("HH:mm:ss"))
+  Status: $($item.Status)
+
+"@
+    }
+}
+
+$emailBody += @"
+----------------------------------------
+LOCAL FOLDERS BACKUP (CENTRAL PC)
+----------------------------------------
+"@
+
+if ($localSummary.Count -eq 0) {
+    $emailBody += "No local folders configured.`n"
+} else {
+    foreach ($item in $localSummary) {
+        $emailBody += @"
+
+  Folder: $($item.Folder)
+  Start : $($item.Start.ToString("HH:mm:ss"))
+  End   : $($item.End.ToString("HH:mm:ss"))
+  Status: $($item.Status)
+
+"@
+    }
+}
+
+$emailBody += @"
+
+Log file:
+$logFile
+"@
+
+Send-BackupEmail -subject $subject -body $emailBody
 
 # -----------------------------
 # Finish

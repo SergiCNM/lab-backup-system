@@ -21,7 +21,6 @@ $sevenZipPath = $config.sevenZipPath
 $scriptStartTime = Get-Date
 $remoteSummary = @()
 $localSummary = @()
-$networkWasUsed = $false
 
 # -----------------------------
 # Prepare log folder
@@ -192,67 +191,98 @@ $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 # ----------------------------------------
 if (!(Test-Path $localMirror)) { New-Item -ItemType Directory -Path $localMirror -Force | Out-Null }
 
-# -----------------------------
-# 1. Copy PCs from network
+# ----------------------------- 
+# 1. Copy PCs from network 
 # -----------------------------
 if ($pcsToCopy -and $pcsToCopy.Count -gt 0) {
-    $networkAvailable = Check-Network -PathToCheck $networkPath
-    if ($networkAvailable) {
-        Write-Log "Starting backup of lab PCs: $($pcsToCopy -join ', ')"
-        foreach ($pc in $pcsToCopy) {
-	    $pcStart = Get-Date  
-	    $networkWasUsed = $true
-            $source = Join-Path $networkPath $pc
-            $dest = Join-Path $localMirror $pc
-	    $status = "OK"
-    
-            if (!(Test-Path $source)) {
-                Write-Log "WARNING: Source folder for $pc not found: $source"
-	        $status = "SOURCE NOT FOUND"
+    foreach ($pc in $pcsToCopy) {
 
-		$remoteSummary += [PSCustomObject]@{
-	            PC      = $pc
-        	    Start   = $pcStart
-	            End     = Get-Date
-        	    Status  = $status
-	        }
-        	continue
+        $pcStart = Get-Date
+        $source  = Join-Path $networkPath $pc
+        $dest    = Join-Path $localMirror $pc
+        $status  = "OK"
+
+        # Check if PC is reachable
+        $pcOnline = Test-Connection -ComputerName $pc -Count 1 -Quiet -ErrorAction SilentlyContinue
+
+        if (-not $pcOnline) {
+            $status = "PC OFFLINE"
+            Write-Log "WARNING: $pc appears OFFLINE."
+
+            $remoteSummary += [PSCustomObject]@{
+                PC      = $pc
+                Start   = $pcStart
+                End     = Get-Date
+                Status  = $status
             }
-    
-            Write-Log "Syncing $source -> $dest (mirror)"
-            robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG+:$logFile
-	    $rc = $LASTEXITCODE
 
-	    # Interpret robocopy exit code (important)
-	    if ($rc -ge 8) {
-        	$status = "ERROR (Robocopy code $rc)"
-	        Write-Log "ERROR syncing $pc (code $rc)"
-	    } elseif ($rc -ge 4) {
-        	$status = "WARNING (Robocopy code $rc)"
-	    } else {
-        	$status = "SUCCESS"
-	    }
-
-	    $pcEnd = Get-Date
-    	    $remoteSummary += [PSCustomObject]@{
-	        PC      = $pc
-        	Start   = $pcStart
-	        End     = $pcEnd
-        	Status  = $status
-	    }
-
-            Write-Log "Finished syncing $pc with status: $status"
-    
-            if ($deleteAfterCopy) {
-                Write-Log "Deleting source backup of $pc"
-                $empty = Join-Path $env:TEMP "empty_folder"
-                if (!(Test-Path $empty)) { New-Item -ItemType Directory -Path $empty | Out-Null }
-                robocopy $empty $source /MIR /R:1 /W:1 /NFL /NDL /NP
-                Write-Log "Source backup $pc deleted"
-            }
+            continue
         }
-    } else {
-        Write-Log "Network unavailable, only local mirror backups will run."
+
+        # Check if backup folder exists
+        if (!(Test-Path $source)) {
+            $status = "NO BACKUP FOUND"
+            Write-Log "WARNING: $pc is online but no backup folder found at $source"
+
+            $remoteSummary += [PSCustomObject]@{
+                PC      = $pc
+                Start   = $pcStart
+                End     = Get-Date
+                Status  = $status
+            }
+
+            continue
+        }
+
+        # Check age of backup
+        $lastFile = Get-ChildItem $source -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($lastFile) {
+            $hoursOld = (New-TimeSpan -Start $lastFile.LastWriteTime -End (Get-Date)).TotalHours
+            if ($hoursOld -gt 24) {
+                Write-Log "WARNING: Backup for $pc is older than 24 hours (Last file update: $($lastFile.LastWriteTime))"
+                $status = "SUCCESS (OLD COPY)"
+            } else {
+                $status = "SUCCESS"
+            }
+        } else {
+            # Carpeta vacía pero existe
+            Write-Log "WARNING: Backup folder exists but contains no files."
+            $status = "NO FILES"
+        }
+
+        # Backup exists -> copy
+        Write-Log "Syncing $source -> $dest (mirror)"
+        robocopy $source $dest /MIR /Z /R:2 /W:5 /MT:16 /FFT /NP /NDL /NFL /TEE /LOG+:$logFile
+        $rc = $LASTEXITCODE
+
+        # Interpret robocopy exit code
+        if ($rc -ge 8) {
+            $status = "ERROR (Robocopy code $rc)"
+            Write-Log "ERROR syncing $pc (code $rc)"
+        }
+        elseif ($rc -ge 4) {
+            $status = "WARNING (Robocopy code $rc)"
+        }
+
+        $pcEnd = Get-Date
+
+        $remoteSummary += [PSCustomObject]@{
+            PC      = $pc
+            Start   = $pcStart
+            End     = $pcEnd
+            Status  = $status
+        }
+
+        Write-Log "Finished syncing $pc with status: $status"
+
+        # Delete remote backup if required
+        if ($deleteAfterCopy) {
+            Write-Log "Deleting source backup of $pc"
+            $empty = Join-Path $env:TEMP "empty_folder"
+            if (!(Test-Path $empty)) { New-Item -ItemType Directory -Path $empty | Out-Null }
+            robocopy $empty $source /MIR /R:1 /W:1 /NFL /NDL /NP
+            Write-Log "Source backup $pc deleted"
+        }
     }
 } else {
     Write-Log "No PCs listed in pcsToCopy. Skipping network backup."
@@ -265,8 +295,8 @@ if ($folders -and $folders.Count -gt 0) {
     Write-Log "Starting backup of local folders for central PC: $pcName"
 
     foreach ($folder in $folders) {
-	$folderStart = Get-Date
-	$folderStatus = "OK"
+		$folderStart = Get-Date
+		$folderStatus = "OK"
 
         $source = $folder.source
         $name = $folder.name
@@ -319,7 +349,7 @@ if ($folders -and $folders.Count -gt 0) {
                 }
             }
             catch {
-		$folderStatus = "ERROR"
+				$folderStatus = "ERROR"
                 Write-Log "ERROR during compression of $name : $_"
             }
             finally {
@@ -344,14 +374,14 @@ if ($folders -and $folders.Count -gt 0) {
             Write-Log "Finished syncing folder: $name"
         }
 
-	$folderEnd = Get-Date
+		$folderEnd = Get-Date
 
-	$localSummary += [PSCustomObject]@{
-	    Folder = $name
-	    Start  = $folderStart
-	    End    = $folderEnd
-	    Status = $folderStatus
-	}
+		$localSummary += [PSCustomObject]@{
+		    Folder = $name
+		    Start  = $folderStart
+		    End    = $folderEnd
+		    Status = $folderStatus
+		}
     }
 } else {
     Write-Log "No local folders defined in configuration. Skipping central PC backup."

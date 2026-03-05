@@ -414,12 +414,18 @@ if ($remoteSummary.Count -eq 0) {
     $emailBody += "No remote PCs copied.`n"
 } else {
     foreach ($item in $remoteSummary) {
+		$statusDisplay = $item.Status
+	    if ($statusDisplay -like "SUCCESS (OLD COPY)") {
+	        $statusDisplay += " ⚠️"   # Visual mark OLD BACKUP
+	    } elseif ($statusDisplay -match "ERROR|OFFLINE|NO BACKUP") {
+	        $statusDisplay += " ❌"   # Visual mark ALERT
+	    }
         $emailBody += @"
 
   PC    : $($item.PC)
   Start : $($item.Start.ToString("HH:mm:ss"))
   End   : $($item.End.ToString("HH:mm:ss"))
-  Status: $($item.Status)
+  Status: $statusDisplay
 
 "@
     }
